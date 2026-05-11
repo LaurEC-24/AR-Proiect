@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>AR CTE SUD - Simulator Oprire Cazan</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        font-family: sans-serif;
+      }
+
+      #overlay {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        z-index: 1000;
+        background: rgba(0, 0, 0, 0.85);
+        color: white;
+        padding: 15px;
+        border-radius: 8px;
+        max-width: 300px;
+        border: 1px solid #444;
+      }
+
+      #status-ui {
+        font-size: 14px;
+        margin-bottom: 10px;
+        line-height: 1.4;
+      }
+
+      button {
+        padding: 12px;
+        background: #ff3b3b;
+        color: white;
+        border: none;
+        cursor: pointer;
+        width: 100%;
+        border-radius: 4px;
+        font-weight: bold;
+        text-transform: uppercase;
+        font-size: 14px;
+      }
+
+      button:hover {
+        background: #ff1111;
+      }
+    </style>
+
+    <script>
+      // 1. GENERATOR SUNET (WEB AUDIO API)
+      let audioCtx;
+      let alarmInterval;
+
+      window.playAlarm = function () {
+        if (!audioCtx)
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === "suspended") audioCtx.resume();
+        let highTone = true;
+        alarmInterval = setInterval(() => {
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.type = "square";
+          osc.frequency.setValueAtTime(
+            highTone ? 1000 : 800,
+            audioCtx.currentTime
+          );
+          highTone = !highTone;
+          gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(
+            0.001,
+            audioCtx.currentTime + 0.4
+          );
+          osc.connect(gain);
+          gain.connect(audioCtx.destination);
+          osc.start();
+          osc.stop(audioCtx.currentTime + 0.4);
+        }, 500);
+      };
+
+      window.stopAlarm = function () {
+        if (alarmInterval) clearInterval(alarmInterval);
+      };
+
+      window.playMechSound = function () {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(
+          10,
+          audioCtx.currentTime + 0.6
+        );
+        gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(
+          0.01,
+          audioCtx.currentTime + 0.6
+        );
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.6);
+      };
+
+      // 2. MANAGER SCENARIU
+      AFRAME.registerComponent("scenario-manager", {
+        init: function () {
+          let STATE = 0;
+          let reactionStartTime = 0;
+
+          // Funcții sigure pentru DOM
+          const getEl = (selector) => document.querySelector(selector);
+          const setVis = (selector, vis) => {
+            const el = getEl(selector);
+            if (el) el.setAttribute("visible", vis ? "true" : "false");
+          };
+          const setClass = (selector, add) => {
+            const el = getEl(selector);
+            if (el) {
+              if (add) el.classList.add("clickable");
+              else el.classList.remove("clickable");
+            }
+          };
+          const setInstruction = (text, color = "yellow") => {
+            const el = getEl("#instruction");
+            if (el) {
+              el.setAttribute("value", text);
+              el.setAttribute("color", color);
+            }
+          };
+
+          // PAS 0: START
+          getEl("#start-btn").addEventListener("click", () => {
+            if (STATE === 0) {
+              window.playAlarm();
+              getEl("#start-btn").style.display = "none";
+              getEl("#status-ui").innerHTML =
+                "STATUS: ALARMĂ ACTIVĂ!<br>Caută markerul C-2 SUD cu camera.";
+
+              STATE = 1;
+              setVis("#gauge", true);
+              setClass("#gauge", true);
+              setInstruction(
+                "PAS 1: Confirma avaria.\nPriveste manometrul 1.2s",
+                "yellow"
+              );
+            }
+          });
+
+          // EVENT DELEGATION: Ascultăm click-urile global pe scena AR
+          this.el.addEventListener("click", (e) => {
+            if (!e.target || !e.target.id) return;
+            const targetId = e.target.id;
+
+            // PAS 1: VALIDARE (Privire Manometru)
+            if (STATE === 1 && targetId === "gauge") {
+              setClass("#gauge", false);
+              e.target.setAttribute("material", "color: orange");
+
+              STATE = 2;
+              setVis("#btn-trip", true);
+              setClass("#btn-trip", true);
+              setVis("#btn-decoy", true);
+              setClass("#btn-decoy", true);
+
+              setInstruction(
+                "PAS 2: Opreste Cazan 2!\nATENTIE: Nu apasa Cazan 1",
+                "red"
+              );
+              getEl("#status-ui").innerHTML =
+                "STATUS: PRESIUNE CRITICĂ CONFIRMATĂ<br>Acționează oprirea!";
+              reactionStartTime = Date.now();
+            }
+
+            // PAS 2a: EROARE CRITICĂ (Privire Cazan 1)
+            else if (STATE === 2 && targetId === "btn-decoy") {
+              window.stopAlarm();
+              setInstruction(
+                "EROARE CRITICA!\nAi oprit cazanul gresit.",
+                "red"
+              );
+              getEl("#status-ui").innerHTML = "STATUS: EȘEC PROCEDURAL";
+              alert(
+                "Scenariu Eșuat!\nAi acționat greșit Cazanul 1. Conform procedurii, acest lucru poate declanșa o avarie în lanț. Dai refresh paginii pentru a relua."
+              );
+            }
+
+            // PAS 2b: ACȚIUNE CORECTĂ (Privire Boiler Trip)
+            else if (STATE === 2 && targetId === "btn-trip") {
+              const reactionTime = (Date.now() - reactionStartTime) / 1000;
+              window.stopAlarm();
+              window.playMechSound();
+
+              const txtPresiune = getEl("#txt-presiune");
+              if (txtPresiune) {
+                txtPresiune.setAttribute("value", "0 BAR\n(Presiune)");
+                txtPresiune.setAttribute("color", "green");
+              }
+              setClass("#btn-trip", false);
+              setClass("#btn-decoy", false);
+
+              getEl(
+                "#status-ui"
+              ).innerHTML = `STATUS: CAZAN OPRIT<br>Timp reacție: <b>${reactionTime.toFixed(
+                2
+              )}s</b>`;
+
+              STATE = 3;
+              setVis("#monitor-flacara", true);
+              setClass("#monitor-flacara", true);
+              setInstruction(
+                "PAS 3: Verificare post-manevra.\nPriveste Monitorul Ardere",
+                "orange"
+              );
+            }
+
+            // PAS 3: VERIFICARE FINALĂ (Privire Monitor)
+            else if (STATE === 3 && targetId === "monitor-flacara") {
+              setClass("#monitor-flacara", false);
+              const txtFlacara = getEl("#txt-flacara");
+              if (txtFlacara) {
+                txtFlacara.setAttribute("value", "FLACARA: 0\n(Siguranta)");
+                txtFlacara.setAttribute("color", "green");
+              }
+
+              setInstruction(
+                "SCENARIU COMPLET!\nInstalatie in siguranta.",
+                "green"
+              );
+              getEl("#status-ui").innerHTML =
+                "STATUS: SCENARIU FINALIZAT CU SUCCES";
+
+              setTimeout(() => {
+                alert(
+                  "Felicitări!\nAi parcurs corect procedura de oprire a Cazanului 2 (Validare -> Acțiune -> Confirmare)."
+                );
+              }, 500);
+            }
+          });
+        },
+      });
+    </script>
+  </head>
+
+  <body>
+    <!-- INTERFAȚA 2D (Overlay) -->
+    <div id="overlay">
+      <div id="status-ui">STATUS: AȘTEPTARE START SCENARIU</div>
+      <button id="start-btn">ÎNCEPE SIMULAREA</button>
+    </div>
+
+    <!-- SCENA AR -->
+    <a-scene
+      embedded
+      arjs="sourceType: webcam; debugUIEnabled: false;"
+      scenario-manager
+    >
+      <!-- GAZE CURSOR explicit cu fuse de 1.2s pentru a fi mai ușor pe mobil -->
+      <a-entity camera>
+        <a-entity
+          cursor="fuse: true; fuseTimeout: 1200"
+          raycaster="objects: .clickable"
+          position="0 0 -1"
+          geometry="primitive: ring; radiusInner: 0.02; radiusOuter: 0.03"
+          material="color: white; shader: flat; opacity: 0.8"
+          animation__fusing="property: scale; startEvents: fusing; easing: linear; dur: 1200; from: 1 1 1; to: 0.1 0.1 0.1"
+          animation__mouseleave="property: scale; startEvents: mouseleave; easing: easeInCubic; dur: 100; to: 1 1 1"
+          animation__click="property: scale; startEvents: click; easing: easeInCubic; dur: 150; from: 0.1 0.1 0.1; to: 1 1 1"
+        ></a-entity>
+      </a-entity>
+
+      <!-- MARKERUL C-2 SUD (Personalizat) -->
+      <a-marker type="pattern" url="pattern-c-2sud.patt">
+        <!-- Header Titlu -->
+        <a-text
+          id="header"
+          value="PANOU COMANDA - CTE SUD"
+          color="white"
+          position="0 0.1 -1"
+          rotation="-90 0 0"
+          align="center"
+          scale="0.8 0.8 0.8"
+        ></a-text>
+
+        <!-- Instrucțiuni Centrale -->
+        <a-text
+          id="instruction"
+          value="Apasa INCEPE SIMULAREA pe ecran"
+          color="yellow"
+          position="0 0.1 1.2"
+          rotation="-90 0 0"
+          align="center"
+          scale="0.6 0.6 0.6"
+        ></a-text>
+
+        <!-- PAS 1: Ceas Presiune (Validare) -->
+        <a-entity
+          id="gauge"
+          class="clickable"
+          geometry="primitive: cylinder; radius: 0.35; height: 0.05"
+          material="color: #222"
+          position="-0.8 0.025 -0.3"
+          visible="false"
+        >
+          <a-text
+            id="txt-presiune"
+            value="200 BAR\n(Presiune)"
+            color="red"
+            align="center"
+            position="0 0.03 0"
+            scale="0.5 0.5 0.5"
+            rotation="-90 0 0"
+          ></a-text>
+        </a-entity>
+
+        <!-- PAS 2a: Buton DECOY (Eroare - Cazan 1) -->
+        <a-entity
+          id="btn-decoy"
+          class="clickable"
+          geometry="primitive: cylinder; radius: 0.3; height: 0.1"
+          material="color: darkred"
+          position="-0.6 0.05 0.5"
+          visible="false"
+        >
+          <a-text
+            value="OPRIRE\n(CAZAN 1)"
+            align="center"
+            position="0 0.06 0"
+            scale="0.4 0.4 0.4"
+            rotation="-90 0 0"
+          ></a-text>
+        </a-entity>
+
+        <!-- PAS 2b: Buton BOILER TRIP (Corect - Cazan 2) -->
+        <a-entity
+          id="btn-trip"
+          class="clickable"
+          geometry="primitive: cylinder; radius: 0.3; height: 0.1"
+          material="color: red"
+          position="0.6 0.05 0.5"
+          visible="false"
+        >
+          <a-text
+            value="BOILER TRIP\n(CAZAN 2)"
+            align="center"
+            position="0 0.06 0"
+            scale="0.4 0.4 0.4"
+            rotation="-90 0 0"
+          ></a-text>
+        </a-entity>
+
+        <!-- PAS 3: Monitor Flacara -->
+        <a-entity
+          id="monitor-flacara"
+          class="clickable"
+          geometry="primitive: box; width: 0.8; depth: 0.5; height: 0.05"
+          material="color: #111"
+          position="0.8 0.025 -0.3"
+          visible="false"
+        >
+          <a-text
+            id="txt-flacara"
+            value="FLACARA: ?\n(Analizare)"
+            color="orange"
+            align="center"
+            position="0 0.03 0"
+            scale="0.4 0.4 0.4"
+            rotation="-90 0 0"
+          ></a-text>
+        </a-entity>
+      </a-marker>
+    </a-scene>
+  </body>
+</html>

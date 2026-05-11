@@ -228,7 +228,7 @@
         </a-entity>
 
         <!-- MARKERUL C-2 SUD (Personalizat) -->
-        <a-marker type="pattern" url="pattern-1Untitled.patt">
+        <a-marker type="pattern" url="pattern-c-2sud.patt">
 
             <!-- Header Titlu -->
             <a-text id="header" value="PANOU COMANDA - CTE SUD" color="white" position="0 0.1 -1" rotation="-90 0 0"
